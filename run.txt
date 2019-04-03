@@ -1,0 +1,221 @@
+# -*- coding: utf-8 -*-
+from collections import Counter
+from urllib.request import urlopen
+from bs4 import BeautifulSoup
+import re
+import sqlite3
+import xlsxwriter
+
+def check_url(url):
+	http_regex = r'^https?://' # https or http
+	pattern = re.compile(http_regex)
+	is_a_match = pattern.match(url) # regex match or None
+	if is_a_match is None:
+		raise ValueError("This url does not start with http:// or https://")
+	return url
+
+def get_input():
+	url = input("Enter your url to scrape:  ")
+	if url == 'q':
+		return 
+	try:
+		check_url(url)
+	except ValueError as err:
+		print(err)
+		print("Type 'q' to quit lookup")
+		return get_input()
+	return url
+
+
+
+def get_urltext(url):
+	html=urlopen(url)
+	soup=BeautifulSoup(html,"html.parser")
+	s=""
+	for script in soup(["script","style"]):
+		s=script.extract()
+	text=soup.get_text()
+	lines=(line.strip() for line in text.splitlines())
+	s=[]
+	for a in lines:
+		s.append(a)
+	str=""
+	str="".join(s)
+	return str
+
+
+
+def clean_word(word):
+    word = word.replace("!", "") #.split()
+    word = word.replace("?", "")
+    word = word.replace(".", "")
+    word = word.replace(":", "")
+    word = word.replace(",", "")
+    word = word.replace(";", "")
+    word = word.replace(")", "")
+    word = word.replace("(", "")
+    word = word.replace("-", "")
+    word = word.replace("--", "")
+    word=re.sub("[s]$","",word)
+    return word
+
+
+
+def get_word_list():
+	finn=open("C:\\Users\\HP\\Desktop\\webscrap\\remove.txt","r")
+	fin=open("C:\\Users\\HP\\Desktop\\webscrap\\urltext.txt","r")
+	new_words=[]
+	str=""
+	for a in fin:
+		str+=a
+	word_str=str.split()
+	stri=""
+	for b in finn:
+		stri+=b
+	word_stri=stri.split()
+	for word in word_str:
+		word=word.lower()
+		cleaned_word=clean_word(word)
+		if cleaned_word in word_stri:
+			pass
+		else:
+			new_words.append(cleaned_word)
+	fin.close()
+	finn.close()
+	return new_words
+
+
+def count_words(words):
+	print("How do you want to analyze words?")
+	print("Enter 1 to automatically analyze\nEnter 2 to manually analyze")
+	t=int(input())
+	if (t==1) :
+		word_dict=automatic_wordcount(words)
+	else:
+		word_dict=manual_wordcount(words)
+	return word_dict
+
+
+
+def automatic_wordcount(words):
+	word_count=Counter(words)
+	z={}
+	for word,count in word_count.most_common(10):
+		z[word]=count
+	return z
+
+
+def manual_wordcount(words):
+	s=[]
+	t='o'
+	print("Enter words you want to analyze(enter 'y' if you are finished):")
+	while t!='y':
+		t=input()
+		if t=='y':
+			pass
+		else:
+			s.append(t)	
+	q={}
+	w=[]
+	y=""
+	for a in s:
+		a=a.lower()
+		y=clean_word(a)
+		w.append(y)
+	for b in w:
+		v=words.count(b)
+		q[b]=v
+	return q
+
+
+def store_in_database(word_count_dict):
+	conn=sqlite3.connect("C:\\Users\\HP\\Desktop\\webscrap\\mydb.db")
+	conn.execute("drop table project;")
+	conn.execute("create table project(name text,count int);")
+	a=word_count_dict.keys()
+	b=word_count_dict.values()
+	for a,b in word_count_dict.items():
+		conn.execute("insert into project(name,count) values(?,?)",(a,b))
+	conn.commit()
+	conn.close()
+	
+	
+def display_database():
+	conn=sqlite3.connect("C:\\Users\\HP\\Desktop\\webscrap\\mydb.db")
+	curr=conn.cursor()
+	curr=conn.execute("select * from project;")
+	print(curr.fetchall())
+	conn.close()
+		
+	
+
+def draw_chart():
+	conn=sqlite3.connect("C:\\Users\\HP\\Desktop\\webscrap\\mydb.db")
+	curr=conn.execute("select * from project;")
+	workbook=xlsxwriter.Workbook("result.xlsx")
+	worksheet=workbook.add_worksheet("chart")
+	bold=workbook.add_format({'bold':True})
+	worksheet.set_column(1,0,15)
+	a=worksheet.write('A1','Word',bold)
+	b=worksheet.write('B1','Count',bold)
+	row=1
+	col=0
+	b=curr.fetchall()
+	for item,cost in iter(b):
+		a=worksheet.write(row,col,item)
+		a=worksheet.write(row,col+1,cost)
+		row+=1
+	chart=workbook.add_chart({'type':'line'})
+	chart.add_series({
+	'categories':['chart',1,0,row-1,0],
+	'values':['chart',1,1,row-1,1],
+	'line':{'color':'red','width' : 1.25,},
+	'marker': {
+	'type': 'square',
+	'size': 5,
+	'border': {'color': 'black'},
+	'fill':   {'color': 'gray'},
+	},
+	})
+	chart.set_x_axis({
+	'name':'Word names',
+	'name_font':{'size':14,'bold':True},
+	'num_font':{'italic':True},
+	})
+	chart.set_y_axis({
+	'name':'Word count',
+	'name_font':{'size':14,'bold':True},
+	'num_font':{'italic':True},
+	})
+	chart.set_title({'name':'Word Frequency Result'})
+	chart.set_style(37)
+	chart.set_size({'width': 620, 'height': 476})
+	worksheet.insert_chart("F3",chart)
+	workbook.close()
+	
+		
+			
+
+def store_text_in_file(text):
+	open("C:\\Users\\HP\\Desktop\\webscrap\\urltext.txt",'w').close()
+	fin=open("C:\\Users\\HP\\Desktop\\webscrap\\urltext.txt",'r+')
+	fin.write(text)
+	fin.close()
+
+
+def main():
+	url=get_input()	
+	text=get_urltext(url)
+	store_text_in_file(text)
+	words=get_word_list()
+	word_count_dict=count_words(words)
+	#print(word_count_dict)
+	store_in_database(word_count_dict)
+	#display_database()
+	draw_chart()
+	
+
+
+
+main()
+print("\n\n*************Scraping Finished..Check Excel File For Results*************")
